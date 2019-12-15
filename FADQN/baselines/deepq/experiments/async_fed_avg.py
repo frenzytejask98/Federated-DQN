@@ -1,16 +1,15 @@
 import gym
 import itertools
-import sys  # for sys.argv
+import sys  
 import random
-import time  # for time.sleep
-import argparse  # for parsing command line arguments... obviously
-import configparser  # for parsing the config ini file
-from datetime import datetime  # For generating timestamps for CSV files
-import csv  # for writing to CSV files... obviously
-import bisect  # for inserting into sorted lists
-import statistics  # for averaging and stuff
-
-import os  # for getting paths to this file
+import time 
+import argparse  
+import configparser  
+from datetime import datetime  
+import csv  
+import bisect 
+import statistics  
+import os  
 sys.path.append(os.path.split(os.path.split(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))[0])[0])
 
 import numpy as np
@@ -25,16 +24,6 @@ from baselines import deepq
 from baselines.deepq.replay_buffer import ReplayBuffer
 from baselines.common.schedules import LinearSchedule
 
-"""
-activate py36
-cd PycharmProjects\distrl
-python baselines\deepq\experiments\custom_cartpole.py
-Synchronized?
-https://stackoverflow.com/questions/42492589/distributed-tensorflow-on-distributed-data-synchronize-workers
-https://www.tensorflow.org/api_docs/python/tf/train/SyncReplicasOptimizer
-"""
-
-# some parameters
 seed = 1
 env_name = "CartPole-v0"
 max_reward = 200
@@ -54,17 +43,6 @@ def write_csv(run_code, log, comm_rounds=False):
 def write_csv_final(file_name, final_episode, worker_hosts=None, chief=False, comm_rounds=0, mute=False):
     new_filename = file_name + "=" + str(final_episode) + "ep.csv"
     os.rename(file_name + ".csv", new_filename)
-    # with open(file_name + ".csv", 'r', newline='') as infile, open(new_filename, 'w', newline='') as outfile:
-    #     reader = csv.reader(infile, delimiter=';')
-    #     writer = csv.writer(outfile, delimiter=';')
-    #     i = 0
-    #     for row in reader:
-    #         writer.writerow(row + ([] if i >= len(round_log) else round_log[i]))
-    #         i += 1
-    #
-    #     for a in round_log[i:]:
-    #         writer.writerow([None, None, None, None] + a)
-    # os.remove(file_name + ".csv")
     if chief:
         if all([host.find("localhost") >= 0 for host in worker_hosts]):
             data = []
@@ -261,9 +239,6 @@ def main(_):
         comm_rounds_global = 0
         dt = 0
         write_csv(run_code, log=["episode", "reward" + str(task), "avg_reward" + str(task), "t_global", "cr"])
-        # TODO RE-ENABLE comm-rounds LOGGING
-        # write_csv(run_code, log=["comm_rounds", "t" + str(task), "staleness" + str(task), "epoch" + str(task)],
-        #           comm_rounds=True)
 
         episode_rewards = [0.0]
         cr_reward = 0
@@ -291,7 +266,6 @@ def main(_):
                 avg_rew = np.round(np.mean(np.array(episode_rewards[-100:])), 1)
                 write_csv(run_code, [len(episode_rewards), episode_rewards[-1], avg_rew, debug['t_global']()[0], comm_rounds_global])
 
-                # Reset and prepare for next episode
                 obs = env.reset()
                 episode_rewards.append(0)
 
@@ -309,14 +283,12 @@ def main(_):
                 print("Total time:", sec // 3600, "h", (sec % 3600) // 60, "min", sec % 60, "s")
                 return
             else:
-                # Minimize the error in Bellman's equation on a batch sampled from replay buffer.
                 if t >= exp_gen:
                 # if t >= batch_size:
                     obses_t, actions, rewards, obses_tp1, dones = replay_buffer.sample(batch_size)
                     td_error = train(obses_t, actions, rewards, obses_tp1, dones, np.ones_like(rewards))
 
-                    if t - t_start >= np.round(epoch.value(comm_rounds)):  # The number of local timesteps to calculate before averaging gradients
-                        # print("t = {}, Updating global network (t_global = {})".format(t, debug['t_global']()[0]))
+                    if t - t_start >= np.round(epoch.value(comm_rounds)):  
 
                         cr_old = comm_rounds_global
 
@@ -324,19 +296,13 @@ def main(_):
                         if sync:
                             # Tell the ps we are done and want to submit score
                             [[comm_rounds_global], [worker_count]] = sync_opt['request_submit']()
-                            # print("Checking if CRG(", comm_rounds_global, ") = CR(", comm_rounds, ")", sep="")
 
                             if comm_rounds_global == comm_rounds:
-                                # print("Checking if WC(", worker_count, ") <= n(", sync_workers, ")", sep="")
                                 if worker_count <= sync_workers:
                                     # If allowed to submit score, do it
                                     [comm_rounds_global] = sync_opt['submit_score']([cr_reward])
 
-                                    # print("WC Safe:", worker_count, "<=", sync_workers)
-
-                                    if chief: #worker_count == sync_workers:
-                                        # print("Chief done: round", comm_rounds_global)
-                                        # If it is the last submission of the round, start gradient update round
+                                    if chief: 
                                         [submits] = sync_opt['set_submit']([0])
                                         while worker_count != sync_workers:
                                             if sync_opt['check_converged']()[0]:
@@ -350,8 +316,7 @@ def main(_):
                                             if not mute:
                                                 print("Other worker converged! Finishing in check_submit")
                                             break
-                                        # print("Waiting for submit to start")
-                                        # time.sleep(0.1)
+                                      
                                         pass
 
                                     if sync_opt['check_converged']()[0]:
@@ -366,19 +331,13 @@ def main(_):
                                                                               [cr_reward], [1/len(worker_hosts)], [True])
 
                                     submits = sync_opt['inc_submit']()
-                                    # print("Score=", cr_reward, " Submits=", submits[0][0], " t=", t-t_start,
-                                    #       " t_global_old=", t_global_old, " cr_old=", cr_old,
-                                    #       " cr_global=", comm_rounds_global, " dt=", dt, " factor=", factor, sep='')
-
-                                    # Chief waits until submits = n
                                     if chief:
                                         while not sync_opt['check_submit']()[0] == sync_workers:
                                             if sync_opt['check_converged']()[0]:
                                                 if not mute:
                                                     print("Other worker converged! Finishing in check_submit (chief)")
                                                 break
-                                            # print("Chief waiting for all submits", sync_opt['check_submit']()[0], "!=", sync_workers)
-                                            #time.sleep(5)
+                                          
                                             pass
                                         # print("Round", comm_rounds, "finished")
                                         [w] = sync_opt['reset_wc']()[0]
@@ -434,9 +393,6 @@ def main(_):
                         # write_csv(run_code, [comm_rounds, t, dt, epoch.value(comm_rounds)], comm_rounds=True)
 
                         t_start = t
-                        # epochs = end_epoch if epochs <= end_epoch else epochs - epoch_decay_rate
-
-                # Update target network periodically.
                 if t % target_update == 0:
                     update_target()
 
@@ -457,7 +413,7 @@ def main(_):
                         streak += 1
                     else:
                         break
-                print("[" + ''.join(rew_ill) + "] ([● " + str(rew_ill.count('●')) + " | " + str(rew_ill.count('9')) +
+                #print("[" + ''.join(rew_ill) + "] ([● " + str(rew_ill.count('●')) + " | " + str(rew_ill.count('9')) +
                       " | " + str(rew_ill.count('8')) + " | " + str(rew_ill.count('7')) +
                       " | " + str(rew_ill.count('6')) + " | " + str(rew_ill.count('5')) +
                       " | " + str(rew_ill.count('4')) + " | " + str(rew_ill.count('3')) +
